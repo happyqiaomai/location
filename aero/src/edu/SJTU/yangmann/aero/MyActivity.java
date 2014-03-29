@@ -49,7 +49,7 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     float[] accelerometerValues = new float[3];  //加速度
 
-    float[] magneticFieldValues = new float[3];   //地磁 为了求orientation
+    float[] magneticFieldValues = new float[3];   //地磁传感器数据 为了求orientation
 
     float[] anglespeedValues = new float[3];   //绕轴角速度
 
@@ -77,9 +77,9 @@ public class MyActivity extends Activity implements SensorEventListener {
     private TextView TextViewFA = null;    //文本框
 
 
-    private TextView TextViewYa = null;    //文本框
-    private TextView TextViewP = null;    //文本框
-    private TextView TextViewR = null;    //文本框
+    private TextView TextViewYa = null;    //文本框  显示方向
+    private TextView TextViewP = null;    //文本框  显示沿轴加速度
+    private TextView TextViewR = null;    //文本框  暂时没有用= =
 
 
     private Button bt1 = null;
@@ -187,6 +187,7 @@ public class MyActivity extends Activity implements SensorEventListener {
                 Floc[2] = 0;
 
                 //// TODO: Add a Timer for 30 seconds to get better calibration.
+                //待加一个校准
             }
         });
 
@@ -233,22 +234,21 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
-
+        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
             magneticFieldValues = event.values;
-
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
-
-            accelerometerValues = event.values;
-
-        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
-
-            anglespeedValues = event.values;
-
         }
 
-        calculateOrientation();
-        showSpeed();
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            accelerometerValues = event.values;
+        }
+
+        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+            //加上kalman滤波
+            anglespeedValues = event.values;
+        }
+
+        calculateOrientation(); //计算方向
+        showSpeed(); //显示沿各轴角加速度
 
         if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
             float[] mGravity = event.values.clone();
@@ -283,7 +283,7 @@ public class MyActivity extends Activity implements SensorEventListener {
                 TextViewX.setText("Accuracy: " + event.accuracy + "\nLoc X: " + loc[0] + "\nY: " + loc[1] + "\nZ: " + loc[2]);
 
 
-                // 来自以前
+                // 滤波参数
                 // 滤波方法大致如下： 二阶低通滤波
 
                 float Q = 1/FloatMath.sqrt(2); //品质因子
@@ -300,7 +300,7 @@ public class MyActivity extends Activity implements SensorEventListener {
 
 
 
-                //float y = (x + x2) + x1*a1 - y1*b1 - y2*b2; //过滤后值
+                //float y = (x + x2) + x1*a1 - y1*b1 - y2*b2; //过滤后值 x1，y1 当前值，x2，y2前一时刻的值。  待实现
 
 
                 AccelerVector[0] = vaccx = (vaccx + event.values[0]) / 2;
@@ -417,7 +417,7 @@ public class MyActivity extends Activity implements SensorEventListener {
         values[2] = (float) Math.toDegrees(values[2]);
 
 
-        TextViewYa.setText("Yaw: " + values[0] + "\nPitch: " +values[1] + "\nRoll: " + values[2]);
+        TextViewYa.setText("Yaw: " + values[0] + "\nPitch: " +values[1] + "\nRoll: " + values[2]); //分别是沿z轴 x轴 y轴
 
         Log.i(TAG, values[0]+"");
 
@@ -469,6 +469,7 @@ public class MyActivity extends Activity implements SensorEventListener {
             Log.i(TAG, "西北");
 
         }
+        //经过验证好像不是很准
 
     }
 
