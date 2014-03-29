@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="vertical"
+              android:layout_width="fill_parent"
+              android:layout_height="fill_parent"
+        >
+
+    <TextView
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:text="Press Calibrate and be still for 30s."
+            />
+    <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+        <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Calibrate"
+                android:id="@+id/button1" android:layout_gravity="center" android:layout_column="0"
+                android:layout_row="0"/>
+        <ToggleButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Display/Record"
+                android:id="@+id/toggleButton" android:layout_marginLeft="50dp" android:checked="false"
+                android:textOn="Recording" android:textOff="Displaying"/>
+    </LinearLayout>
+    <GridLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+        tools:ignore="NewApi">
+        <TextView
+                android:layout_width="210dp"
+                android:layout_height="80dp"
+                android:text="Localizing Result"
+                android:id="@+id/textViewx" android:layout_column="0" android:layout_row="0"/>
+        <TextView
+                android:layout_width="210dp"
+                android:layout_height="60dp"
+                android:text="Velovity"
+                android:id="@+id/textViewv" android:layout_column="0" android:layout_row="1"/>
+        <TextView android:layout_width="210dp"
+                  android:layout_height="60dp"
+                  android:text="Acceleration"
+                  android:id="@+id/textViewa" android:layout_column="0" android:layout_row="2"/>
+        <TextView android:layout_width="210dp"
+
+                  android:layout_height="80dp"
+                  android:text="Location_Filtered"
+                  android:id="@+id/textViewFx" android:layout_column="1" android:layout_row="0"/>
+        <TextView android:layout_width="210dp"
+                  android:layout_height="60dp"
+                  android:text="Velocity_Filtered"
+                  android:id="@+id/textViewFv" android:layout_column="1" android:layout_row="1"/>
+        <TextView android:layout_width="210dp"
+                  android:layout_height="60dp"
+                  android:text="Acceleration_Filtered"
+                  android:id="@+id/textViewFa" android:layout_column="1" android:layout_row="2"/>
+        <TextView android:layout_width="210dp"
+
+            android:layout_height="80dp"
+            android:text="Yaw"
+            android:id="@+id/textViewYa" android:layout_column="0" android:layout_row="3"/>
+        <TextView android:layout_width="210dp"
+            android:layout_height="60dp"
+            android:text="Pitch"
+            android:id="@+id/textViewP" android:layout_column="0" android:layout_row="4"/>
+        <TextView android:layout_width="210dp"
+            android:layout_height="60dp"
+            android:text="Roll"
+            android:id="@+id/textViewR" android:layout_column="0" android:layout_row="5"/>
+    </GridLayout>
+    <SurfaceView
+            android:layout_width="540dp"
+            android:layout_height="300dp"
+            android:id="@+id/surfaceView"/>
+</LinearLayout>
+
