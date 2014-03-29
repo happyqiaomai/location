@@ -144,7 +144,7 @@ public class MyActivity extends Activity implements SensorEventListener {
         Time tmp = new Time(System.currentTimeMillis()); //dddd
         //tmp.setToNow();
 
-        fileName = "LOC"+tmp.toString()+".txt";
+        fileName = "LOC"+tmp.toString().substring(0,2)+"-"+tmp.toString().substring(3,5)+"-"+tmp.toString().substring(6,8)+"-"+".txt";
         Log.i(TAG, fileName);
 
 
@@ -354,7 +354,7 @@ public class MyActivity extends Activity implements SensorEventListener {
                         float fvel_all = (Fspeed[0] * Fspeed[0] + Fspeed[1] * Fspeed[1] + Fspeed[2] * Fspeed[2]);
                         fvel_all = FloatMath.sqrt(fvel_all);
                         float vel_all = FloatMath.sqrt(speed[0] * speed[0] + speed[1] * speed[1] + speed[2] * speed[2]);
-                        save2file(Long.toString(System.currentTimeMillis()) + "\t" + Float.toString(fvel_all) + "\t" + Float.toString(vel_all) + "\n");
+                        save2file(Long.toString(System.currentTimeMillis()) + "\t" + Float.toString(fvel_all) + "\t" + Float.toString(vel_all) + "\n"); //改成记录所有数据  accx,accy,accz,yaw,row,pitch,angx,angy,angz. filtered...
                     }
 
                     dT2 = 0;
@@ -419,10 +419,10 @@ public class MyActivity extends Activity implements SensorEventListener {
 
         TextViewYa.setText("Yaw: " + values[0] + "\nPitch: " +values[1] + "\nRoll: " + values[2]); //分别是沿z轴 x轴 y轴
 
-        Log.i(TAG, values[0]+"");
+        //Log.i(TAG, values[0]+"");
 
 
-        if(values[0] >= -5 && values[0] < 5){
+        /*if(values[0] >= -5 && values[0] < 5){
 
             Log.i(TAG, "正北");
 
@@ -468,7 +468,7 @@ public class MyActivity extends Activity implements SensorEventListener {
 
             Log.i(TAG, "西北");
 
-        }
+        }*/
         //经过验证好像不是很准
 
     }
@@ -491,7 +491,7 @@ public class MyActivity extends Activity implements SensorEventListener {
                 file.createNewFile();}
 
             // 打开一个随机访问文件流，按读写方式
-            RandomAccessFile randomFile = new RandomAccessFile("/sdcard/"+fileName, "rw");
+            RandomAccessFile randomFile = new RandomAccessFile("/sdcard/"+fileName, "rws");
             // 文件长度，字节数
             long fileLength = randomFile.length();
             // 将写文件指针移到文件尾。
