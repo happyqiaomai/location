@@ -17,6 +17,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+import jama.Matrix;
+import jkalman.JKalman;
+
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -57,9 +60,6 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     private static final String TAG = "sensor";
 
-
-
-
     private static final float NS2S = 1.0f / 1000000000.0f;
     private final float[] deltaRotationVector = new float[4];  //改
     private float timestamp;
@@ -79,13 +79,21 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     private TextView TextViewYa = null;    //文本框  显示方向
     private TextView TextViewP = null;    //文本框  显示沿轴加速度
-    private TextView TextViewR = null;    //文本框  暂时没有用= =
+    private TextView TextViewR = null;    //文本框  过滤后沿轴加速度
 
 
     private Button bt1 = null;
     private ToggleButton bt2 = null;
 
     private String fileName;
+    private JKalman kalman_ori;
+    private Matrix state_ori;
+    private Matrix state_corrected_ori;
+    private Matrix measurement_ori;
+    private JKalman kalman_vel;
+    private Matrix state_vel;
+    private Matrix state_corrected_vel;
+    private Matrix measurement_vel;
 
     private int state; /// 0:显示模式   1：记录模式
     private float dT, dT2;
@@ -97,6 +105,7 @@ public class MyActivity extends Activity implements SensorEventListener {
     private float[] sinc;
     private boolean startjudge = false;     //作用是什么？
     private float[] worldxfiltered, worldyfiltered, worldxraw, worldyraw, worldzraw, worldzfiltered;
+    float[] values = new float[3]; // orientation
 
     /**
      * Called when the activity is first created.
@@ -128,6 +137,47 @@ public class MyActivity extends Activity implements SensorEventListener {
         }
         threshwindow = window * average;
 
+        //Kalman filter for orientation & angular rate
+        try {
+            kalman_ori = new JKalman(6, 3);
+
+            state_ori = new Matrix(6, 1); // state [x, y, z, dx, dy, dz]
+            state_corrected_ori = new Matrix(6, 1);
+            measurement_ori = new Matrix(3, 1); // measurement [dx, dy, dz]
+            double[][] tr = {
+                    {1, 0, 0, 1, 0, 0},
+                    {0, 1, 0, 0, 1, 0},
+                    {0, 0, 1, 0, 0, 1},
+                    {1, 0, 0, 0, 0, 0},
+                    {0, 1, 0, 0, 0, 0},
+                    {0, 0, 1, 0, 0, 0}
+            };
+            kalman_ori.setTransition_matrix(new Matrix(tr));
+            kalman_ori.setError_cov_post(kalman_ori.getError_cov_post().identity());
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+        try {
+            kalman_vel = new JKalman(6, 3);
+
+            state_vel = new Matrix(6, 1); // state [x, y, z, dx, dy, dz]
+            state_corrected_vel = new Matrix(6, 1);
+            measurement_vel = new Matrix(3, 1); // measurement [dx, dy, dz]
+            double[][] tr = {
+                    {1, 0, 0, 1, 0, 0},
+                    {0, 1, 0, 0, 1, 0},
+                    {0, 0, 1, 0, 0, 1},
+                    {1, 0, 0, 0, 0, 0},
+                    {0, 1, 0, 0, 0, 0},
+                    {0, 0, 1, 0, 0, 0}
+            };
+            kalman_vel.setTransition_matrix(new Matrix(tr));
+            kalman_vel.setError_cov_post(kalman_vel.getError_cov_post().identity());
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
 
         //// TODO 以上来自以前
         mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -144,7 +194,7 @@ public class MyActivity extends Activity implements SensorEventListener {
         Time tmp = new Time(System.currentTimeMillis()); //dddd
         //tmp.setToNow();
 
-        fileName = "LOC"+tmp.toString().substring(0,2)+"-"+tmp.toString().substring(3,5)+"-"+tmp.toString().substring(6,8)+"-"+".txt";
+        fileName = "LOC"+tmp.toString().substring(0,2)+"-"+tmp.toString().substring(3,5)+"-"+tmp.toString().substring(6,8)+".txt";
         Log.i(TAG, fileName);
 
 
@@ -238,19 +288,32 @@ public class MyActivity extends Activity implements SensorEventListener {
             magneticFieldValues = event.values;
         }
 
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             accelerometerValues = event.values;
         }
 
-        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
-            //加上kalman滤波
+        else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+            measurement_vel.set(0, 0, event.values[0]);
+            measurement_vel.set(1, 0, event.values[1]);
+            measurement_vel.set(2, 0, event.values[2]);
+            state_vel = kalman_vel.Predict();
+            state_corrected_vel = kalman_vel.Correct(measurement_vel);
+            TextViewR.setText("------Kalman Data------\n"
+                    +"aX\t" + state_corrected_vel.get(0, 0) + "\n"
+                    +"aY\t"+ state_corrected_vel.get(1, 0) + "\n"
+                    +"aZ\t"+ state_corrected_vel.get(2, 0) + "\n"
+                    +"vX\t"+ state_corrected_vel.get(3, 0) + "\n"
+                    +"vY\t"+ state_corrected_vel.get(4, 0) + "\n"
+                    +"vZ\t"+ state_corrected_vel.get(5, 0) + "\n");
+
             anglespeedValues = event.values;
+
+
         }
 
-        calculateOrientation(); //计算方向
-        showSpeed(); //显示沿各轴角加速度
 
-        if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
+
+        else if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
             float[] mGravity = event.values.clone();
             mAccelLast = mAccelCurrent;
             mAccelCurrent = FloatMath.sqrt(mGravity[0] * mGravity[0] + mGravity[1] * mGravity[1] + mGravity[2] * mGravity[2]);
@@ -301,6 +364,15 @@ public class MyActivity extends Activity implements SensorEventListener {
 
 
                 //float y = (x + x2) + x1*a1 - y1*b1 - y2*b2; //过滤后值 x1，y1 当前值，x2，y2前一时刻的值。  待实现
+//                tau = 1 / (2π * f)
+//
+//                ω = 2π * f is the frequency in radians per second.
+//
+//
+//                        α = 1 / (T * tau)
+//
+//                filter1Out = filter1Out + (alpha * (input - filter1Out));
+//                filter2Out = filter2Out + (alpha * (filter1Out - filter2Out));
 
 
                 AccelerVector[0] = vaccx = (vaccx + event.values[0]) / 2;
@@ -354,10 +426,11 @@ public class MyActivity extends Activity implements SensorEventListener {
                         float fvel_all = (Fspeed[0] * Fspeed[0] + Fspeed[1] * Fspeed[1] + Fspeed[2] * Fspeed[2]);
                         fvel_all = FloatMath.sqrt(fvel_all);
                         float vel_all = FloatMath.sqrt(speed[0] * speed[0] + speed[1] * speed[1] + speed[2] * speed[2]);
-                        save2file(Long.toString(System.currentTimeMillis()) + "\t" + Float.toString(fvel_all) + "\t" + Float.toString(vel_all) + "\n"); //改成记录所有数据  accx,accy,accz,yaw,row,pitch,angx,angy,angz. filtered...
+                        //save2file(Long.toString(System.currentTimeMillis()) + "\t" + Float.toString(fvel_all) + "\t" + Float.toString(vel_all) + "\n"); //改成记录所有数据  accx,accy,accz,yaw,row,pitch,angx,angy,angz. filtered...
                     }
 
                     dT2 = 0;
+
 
                 } else if (counter >= 2) {
                     counter = 0;
@@ -393,12 +466,23 @@ public class MyActivity extends Activity implements SensorEventListener {
             tvmagy.setText("Y: " + vmagy);
             tvmagz.setText("Z: " + vmagz);*/
         }
-
+        calculateOrientation(); //计算方向
+        showSpeed(); //显示沿各轴角加速度
+        if (state == 1) {
+            save2file(Long.toString(System.currentTimeMillis()) + "\t" +anglespeedValues[0]+ "\t" +anglespeedValues[1]+ "\t" +anglespeedValues[2]
+                    +"\t" + values[0] + "\t" +values[1] + "\t" + values[2]
+                    +"\t" + state_corrected_vel.get(0, 0)
+                    +"\t"+ state_corrected_vel.get(1, 0)
+                    +"\t"+ state_corrected_vel.get(2, 0)
+                    +"\t"+ state_corrected_vel.get(3, 0)
+                    +"\t"+ state_corrected_vel.get(4, 0)
+                    +"\t"+ state_corrected_vel.get(5, 0)+"\n");
+         }
     }
 
     private  void calculateOrientation() {
 
-        float[] values = new float[3];
+
 
         float[] R = new float[9];
 
@@ -418,6 +502,7 @@ public class MyActivity extends Activity implements SensorEventListener {
 
 
         TextViewYa.setText("Yaw: " + values[0] + "\nPitch: " +values[1] + "\nRoll: " + values[2]); //分别是沿z轴 x轴 y轴
+
 
         //Log.i(TAG, values[0]+"");
 
@@ -474,7 +559,7 @@ public class MyActivity extends Activity implements SensorEventListener {
     }
 
     public void showSpeed(){
-        TextViewP.setText("Xvel: " + (float) Math.toDegrees(anglespeedValues[0]) + "\nYvel: " +(float) Math.toDegrees(anglespeedValues[1]) + "\nZvel: " + (float) Math.toDegrees(anglespeedValues[2]));
+        TextViewP.setText("Angular rate：\nXvel: " + (float) Math.toDegrees(anglespeedValues[0]) + "\nYvel: " +(float) Math.toDegrees(anglespeedValues[1]) + "\nZvel: " + (float) Math.toDegrees(anglespeedValues[2]));
     }
 
     @Override
