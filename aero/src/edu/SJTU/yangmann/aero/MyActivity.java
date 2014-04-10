@@ -6,26 +6,22 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.util.FloatMath;
 import android.util.Log;
 import android.view.View;
-import android.widget.*;
+import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.widget.ToggleButton;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.sql.Time;
 
 import jama.Matrix;
 import jkalman.JKalman;
-
-
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.sql.Time;
-import java.util.Date;
 
 public class MyActivity extends Activity implements SensorEventListener {
 
@@ -47,8 +43,11 @@ public class MyActivity extends Activity implements SensorEventListener {
             (float) 0, (float) 1, (float) 0, (float) 0, (float) 0, (float) 1};
     private float[] GravityVector = {(float) 0, (float) 0, (float) 9.8};
     private float[] MagneticVector = {(float) 0, (float) 0, (float) 0};
-    private float[] WorldVector = {(float) 0, (float) 0, (float) 0};
-    private float[] AccelerVector = {(float) 0, (float) 0, (float) 0};
+    private float[] WorldVector_last = {(float) 0, (float) 0, (float) 0};
+    private float[] WorldVector_current = {(float) 0, (float) 0, (float) 0};
+    private float[] AccelerVector_raw = {(float) 0, (float) 0, (float) 0};
+    private float[] AccelerVector_filtered = {(float) 0, (float) 0, (float) 0};
+
 
     float[] accelerometerValues = new float[3];  //加速度
 
@@ -62,7 +61,7 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     private static final float NS2S = 1.0f / 1000000000.0f;
     private final float[] deltaRotationVector = new float[4];  //改
-    private float timestamp;
+    private double timestamp;
     private final float[] speed = new float[3];
     private final float[] loc = new float[3];
     private final float[] Fspeed = new float[3];
@@ -96,15 +95,13 @@ public class MyActivity extends Activity implements SensorEventListener {
     private Matrix measurement_vel;
 
     private int state; /// 0:显示模式   1：记录模式
-    private float dT, dT2;
+
     private int counter = 0, accounter = 0, decounter = 0, accnumber = 0;
     private static final float hz = (float) 2.0, pi = (float) 3.14159265, average = (float) 0.9, threshacc = (float) 1.3;
     private float ws = 0, threshwindow = (float) 16.0, accwindow = 0, mSin, mCos, accvalue;    //threshwindow=average*window
     private static final int fs = 16, wlen = 50, window = 16;
     private int slen = 0, judgetimecounter = 0, notaccounter = 0;
     private float[] sinc;
-    private boolean startjudge = false;     //作用是什么？
-    private float[] worldxfiltered, worldyfiltered, worldxraw, worldyraw, worldzraw, worldzfiltered;
     float[] values = new float[3]; // orientation
 
     /**
@@ -115,26 +112,10 @@ public class MyActivity extends Activity implements SensorEventListener {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        dT2 = 0;
-        dT = 0;
+
         state = 0;
 
-        ws = (float) (2 * pi * hz / ((float) fs));
-        slen = 2 * (int) (fs / hz);
-        sinc = new float[slen];
-        worldxfiltered = new float[wlen];
-        worldxraw = new float[wlen];
-        worldyfiltered = new float[wlen];
-        worldyraw = new float[wlen];
-        worldzfiltered = new float[wlen];
-        worldzraw = new float[wlen];
-        for (int i = 0; i < slen; i++) {
-            if (i - slen / 2 != 0) {
-                sinc[i] = (float) (1 / pi * Math.sin(ws * (i - slen / 2)) / (i - slen / 2));
-            } else {
-                sinc[i] = ws / pi;
-            }
-        }
+
         threshwindow = window * average;
 
         //Kalman filter for orientation & angular rate
@@ -293,6 +274,7 @@ public class MyActivity extends Activity implements SensorEventListener {
         }
 
         else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+            //记得转化为world
             measurement_vel.set(0, 0, event.values[0]);
             measurement_vel.set(1, 0, event.values[1]);
             measurement_vel.set(2, 0, event.values[2]);
@@ -329,107 +311,71 @@ public class MyActivity extends Activity implements SensorEventListener {
             //Log.e("COUNT", " " + counter + "STAMP " + timestamp);
             // 积分的部分 NS2S
             if (timestamp != 0) {
-                dT = (event.timestamp - timestamp) * NS2S;  //////////////////////////////
-                TextViewR.setText((Float.toString(dT)));
+                final double dT = (event.timestamp - timestamp)* NS2S;  //////////////////////////////
+                Log.e("COUNT", "" + timestamp +" new: " + event.timestamp);
 
-                dT2 += (event.timestamp - timestamp) * NS2S;                            // Timer for Filtered data
-                speed[0] += event.values[0] * dT;
-                speed[1] += event.values[1] * dT;
-                speed[2] += event.values[2] * dT;
 
-                loc[0] += speed[0] * dT;
-                loc[1] += speed[1] * dT;
-                loc[2] += speed[2] * dT;
-
-                TextViewA.setText("Acc X: " + event.values[0] + "\nY: " + event.values[1] + "\nZ: " + event.values[2]);
-                TextViewV.setText("Vel X: " + speed[0] + "\nY: " + speed[1] + "\nZ: " + speed[2]);
-                TextViewX.setText("Accuracy: " + event.accuracy + "\nLoc X: " + loc[0] + "\nY: " + loc[1] + "\nZ: " + loc[2]);
 
 
                 // 滤波参数
                 // 滤波方法大致如下： 二阶低通滤波
-
-                float Q = 1/FloatMath.sqrt(2); //品质因子
-                float iQ = 1.0f / Q;
+//
+//                float Q = 1/FloatMath.sqrt(2); //品质因子
+//                float iQ = 1.0f / Q;
                 float fc = 1000;
 
 
-                float K = (float) Math.tan((pi) * fc * dT);
-                float iD = 1.0f / (K*K + K*iQ + 1);
-                float a0 = K*K*iD;
-                float a1 = 2.0f * a0;
-                float b1 = 2.0f*(K*K - 1)*iD;
-                float b2 = (K*K - K*iQ + 1)*iD;
+//                float K = (float) Math.tan((pi) * fc * dT);
+//                float iD = 1.0f / (K*K + K*iQ + 1);
+//                float a0 = K*K*iD;
+//                float a1 = 2.0f * a0;
+//                float b1 = 2.0f*(K*K - 1)*iD;
+//                float b2 = (K*K - K*iQ + 1)*iD;
 
 
 
                 //float y = (x + x2) + x1*a1 - y1*b1 - y2*b2; //过滤后值 x1，y1 当前值，x2，y2前一时刻的值。  待实现
-//                tau = 1 / (2π * f)
-//
-//                ω = 2π * f is the frequency in radians per second.
+                float tau = 1 / (2* pi * fc);
 //
 //
-//                        α = 1 / (T * tau)
+//
+                //float alpha = (float)( dT / (dT * tau));
+                float alpha =(float) 0.2;
+                Log.i(TAG, "alpha: "+Double.toString(alpha));
+                Log.i(TAG, "time: "+Double.toString(dT));
 //
 //                filter1Out = filter1Out + (alpha * (input - filter1Out));
 //                filter2Out = filter2Out + (alpha * (filter1Out - filter2Out));
 
 
-                AccelerVector[0] = vaccx = (vaccx + event.values[0]) / 2;
-                AccelerVector[1] = vaccy = (vaccy + event.values[1]) / 2;
-                AccelerVector[2] = vaccz = (vaccz + event.values[2]) / 2;
+                AccelerVector_raw[0] = event.values[0];
+                AccelerVector_raw[1] = event.values[1];
+                AccelerVector_raw[2] = event.values[2];
 
                 //Log.e("COUNT", "" + counter);
                 if (counter == 1) {    //  50/3 hz   Not Happening
                     // get world vector
                     SensorManager.getRotationMatrix(RotationMatrix, null,
                             GravityVector, MagneticVector);
-                    WorldVector = getnewvector(RotationMatrix, AccelerVector);  //// TODO 非常重要的 但为什么会变成
-                    // store world vect
-                    for (int i = 1; i < wlen; i++) {
-                        worldxraw[i] = worldxraw[i - 1];
-                        worldxfiltered[i] = worldxfiltered[i - 1];
-                        worldyraw[i] = worldyraw[i - 1];
-                        worldyfiltered[i] = worldyfiltered[i - 1];
-                        worldzraw[i] = worldzraw[i - 1];
-                        worldzfiltered[i] = worldzfiltered[i - 1];
-                    }
-                    worldxraw[0] = vworldx = WorldVector[0];
-                    worldyraw[0] = vworldy = WorldVector[1];
-                    worldzraw[0] = vworldz = WorldVector[2];
-                    //vworldz=WorldVector[2];
-                    // start sinc filter
-                    worldxfiltered[0] = worldyfiltered[0] = worldzfiltered[0] = 0;
-                    for (int i = 0; i < slen; i++) {
-                        worldxfiltered[0] += sinc[i] * worldxraw[i];
-                        worldyfiltered[0] += sinc[i] * worldyraw[i];
-                        worldzfiltered[0] += sinc[i] * worldzraw[i];
-                    }
+                    WorldVector_last = WorldVector_current;
+                    WorldVector_current = getnewvector(RotationMatrix, AccelerVector_raw);  //// TODO 非常重要的 但为什么会变成
+                    AccelerVector_filtered[0] = WorldVector_last[0] + alpha * (WorldVector_current[0] - WorldVector_last[0]);
+                    AccelerVector_filtered[0] = AccelerVector_filtered[0] + alpha * (WorldVector_current[0] - AccelerVector_filtered[0]);
+                    AccelerVector_filtered[1] = WorldVector_last[1] + alpha * (WorldVector_current[1] - WorldVector_last[1]);
+                    AccelerVector_filtered[1] = AccelerVector_filtered[1] + alpha * (WorldVector_current[1] - AccelerVector_filtered[1]);
+                    AccelerVector_filtered[2] = WorldVector_last[2] + alpha * (WorldVector_current[2] - WorldVector_last[2]);
+                    AccelerVector_filtered[2] = AccelerVector_filtered[2] + alpha * (WorldVector_current[2] - AccelerVector_filtered[2]);
 
-                    Fspeed[0] += worldxfiltered[0] * dT2;
-                    Fspeed[1] += worldyfiltered[0] * dT2;
-                    Fspeed[2] += worldzfiltered[0] * dT2;
-
-                    Floc[0] += Fspeed[0] * dT2;
-                    Floc[1] += Fspeed[1] * dT2;
-                    Floc[2] += Fspeed[2] * dT2;
-
-                    /// 输出结果的部分
-                   /* /Log.v("mLocation", "[x]" + loc[0] + "\t[y]" + loc[1] + "\t[z]" +
-                            loc[2] + "\tDelta Time[s] " + dT);*/
-                    TextViewFA.setText("Acc X: " + worldxfiltered[0] +
-                            "\nY: " + worldyfiltered[0] + "\nZ: " + worldzfiltered[0]);
-                    TextViewFV.setText("Vel X: " + Fspeed[0] + "\nY: " + Fspeed[1] + "\nZ: " + Fspeed[2]);
-                    TextViewFX.setText("------Filtered Data------\nLoc X: " + Floc[0] + "\nY: " + Floc[1] + "\nZ: " + Floc[2]);
+                    TextViewA.setText("------Raw Data------\nAcc X: " + WorldVector_current[0] +
+                            "\nY: " + WorldVector_current[1] + "\nZ: " + WorldVector_current[2]);
+                    TextViewFA.setText("------Filtered Data------\nAcc X: " + AccelerVector_filtered[0] +
+                            "\nY: " + AccelerVector_filtered[1] + "\nZ: " + AccelerVector_filtered[2]);
 
                     if (state == 1) {
-                        float fvel_all = (Fspeed[0] * Fspeed[0] + Fspeed[1] * Fspeed[1] + Fspeed[2] * Fspeed[2]);
-                        fvel_all = FloatMath.sqrt(fvel_all);
-                        float vel_all = FloatMath.sqrt(speed[0] * speed[0] + speed[1] * speed[1] + speed[2] * speed[2]);
-                        //save2file(Long.toString(System.currentTimeMillis()) + "\t" + Float.toString(fvel_all) + "\t" + Float.toString(vel_all) + "\n"); //改成记录所有数据  accx,accy,accz,yaw,row,pitch,angx,angy,angz. filtered...
+                        save2file(Long.toString(System.currentTimeMillis()) + "\t" + WorldVector_current[0] + "\t" + WorldVector_current[1]  + "\t" + WorldVector_current[2] +
+                                "\t"+AccelerVector_filtered[0]+"\t"+AccelerVector_filtered[1]+"\t"+AccelerVector_filtered[2]+"\n"); //改成记录所有数据  accx,accy,accz,yaw,row,pitch,angx,angy,angz. filtered...
                     }
 
-                    dT2 = 0;
 
 
                 } else if (counter >= 2) {
@@ -468,16 +414,7 @@ public class MyActivity extends Activity implements SensorEventListener {
         }
         calculateOrientation(); //计算方向
         showSpeed(); //显示沿各轴角加速度
-        if (state == 1) {
-            save2file(Long.toString(System.currentTimeMillis()) + "\t" +anglespeedValues[0]+ "\t" +anglespeedValues[1]+ "\t" +anglespeedValues[2]
-                    +"\t" + values[0] + "\t" +values[1] + "\t" + values[2]
-                    +"\t" + state_corrected_vel.get(0, 0)
-                    +"\t"+ state_corrected_vel.get(1, 0)
-                    +"\t"+ state_corrected_vel.get(2, 0)
-                    +"\t"+ state_corrected_vel.get(3, 0)
-                    +"\t"+ state_corrected_vel.get(4, 0)
-                    +"\t"+ state_corrected_vel.get(5, 0)+"\n");
-         }
+
     }
 
     private  void calculateOrientation() {
@@ -560,6 +497,16 @@ public class MyActivity extends Activity implements SensorEventListener {
 
     public void showSpeed(){
         TextViewP.setText("Angular rate：\nXvel: " + (float) Math.toDegrees(anglespeedValues[0]) + "\nYvel: " +(float) Math.toDegrees(anglespeedValues[1]) + "\nZvel: " + (float) Math.toDegrees(anglespeedValues[2]));
+//        if (state == 1) {
+//            save2file(Long.toString(System.currentTimeMillis()) + "\t" +anglespeedValues[0]+ "\t" +anglespeedValues[1]+ "\t" +anglespeedValues[2]
+//                    +"\t" + values[0] + "\t" +values[1] + "\t" + values[2]
+//                    +"\t" + state_corrected_vel.get(0, 0)
+//                    +"\t"+ state_corrected_vel.get(1, 0)
+//                    +"\t"+ state_corrected_vel.get(2, 0)
+//                    +"\t"+ state_corrected_vel.get(3, 0)
+//                    +"\t"+ state_corrected_vel.get(4, 0)
+//                    +"\t"+ state_corrected_vel.get(5, 0)+"\n");
+//        }
     }
 
     @Override
